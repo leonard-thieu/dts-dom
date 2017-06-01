@@ -42,6 +42,13 @@ export interface IndexSignature {
     valueType: Type;
 }
 
+export interface CallSignature {
+    kind: "call-signature";
+    parameters: Parameter[];
+    returnType: Type;
+    typeParameters: TypeParameter[];
+}
+
 export interface MethodDeclaration extends DeclarationBase {
     kind: "method";
     name: string;
@@ -75,7 +82,7 @@ export interface ClassDeclaration extends DeclarationBase {
 export interface InterfaceDeclaration extends DeclarationBase {
     kind: "interface";
     name: string;
-    members: ObjectTypeMember[];
+    members: InterfaceMember[];
     baseTypes?: ObjectTypeReference[];
 }
 
@@ -123,7 +130,7 @@ export interface ModuleDeclaration extends DeclarationBase {
 
 export interface ObjectType {
     kind: "object";
-    members: ObjectTypeMember[];
+    members: InterfaceMember[];
 }
 
 export interface UnionType {
@@ -182,6 +189,7 @@ export type TypeReference = TopLevelDeclaration | NamedTypeReference | ArrayType
 
 export type ObjectTypeReference = ClassDeclaration | InterfaceDeclaration;
 export type ObjectTypeMember = PropertyDeclaration | MethodDeclaration | IndexSignature;
+export type InterfaceMember = ObjectTypeMember | CallSignature;
 export type ClassMember = ObjectTypeMember | ConstructorDeclaration;
 
 export type Type = TypeReference | UnionType | IntersectionType | PrimitiveType | ObjectType | TypeofReference | FunctionType | TypeParameter | ThisType;
@@ -272,6 +280,14 @@ export const create = {
         };
     },
 
+    callSignature(parameters: Parameter[], returnType: Type): CallSignature {
+        return {
+            kind: "call-signature",
+            typeParameters: [],
+            parameters, returnType
+        };
+    },
+
     function(name: string, parameters: Parameter[], returnType: Type): FunctionDeclaration {
         return {
             kind: "function",
@@ -322,7 +338,7 @@ export const create = {
         };
     },
 
-    objectType(members: ObjectTypeMember[]): ObjectType {
+    objectType(members: InterfaceMember[]): ObjectType {
         return {
             kind: "object",
             members
@@ -602,7 +618,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         return !!(needle & haystack);
     }
 
-    function printObjectTypeMembers(members: ObjectTypeMember[]) {
+    function printInterfaceMembers(members: InterfaceMember[]) {
         print('{');
         newline();
         indentLevel++;
@@ -613,7 +629,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         tab();
         print('}');
 
-        function printMember(member: ObjectTypeMember) {
+        function printMember(member: InterfaceMember) {
             switch (member.kind) {
                 case 'index-signature':
                     printDeclarationComments(member);
@@ -625,6 +641,25 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     print(';');
                     newline();
                     return;
+                case "call-signature": {
+                    printDeclarationComments(member);
+                    tab();
+                    writeTypeParameters(member.typeParameters);
+                    print("(");
+                    let first = true;
+                    for (const param of member.parameters) {
+                        if (!first) print(", ");
+                        first = false;
+                        print(param.name);
+                        print(": ");
+                        writeReference(param.type);
+                    }
+                    print("): ");
+                    writeReference(member.returnType);
+                    print(";");
+                    newline();
+                    return;
+                }
                 case 'method':
                     printDeclarationComments(member);
                     tab();
@@ -656,7 +691,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     newline();
                     return;
             }
-            never(member, `Unknown member kind ${(member as ObjectTypeMember).kind}`);
+            never(member, `Unknown member kind ${(member as InterfaceMember).kind}`);
         }
     }
 
@@ -682,7 +717,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     break;
 
                 case "object":
-                    printObjectTypeMembers(e.members);
+                    printInterfaceMembers(e.members);
                     break;
                     
                 case "string-literal":
@@ -754,7 +789,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                 first = false;
             }
         }
-        printObjectTypeMembers(d.members);
+        printInterfaceMembers(d.members);
         newline();
     }
 
