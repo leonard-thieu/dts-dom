@@ -797,7 +797,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         print('(');
         writeDelimited(f.parameters, ', ', writeParameter);
         print(')');
-        print('=>');
+        print(' => ');
         writeReference(f.returnType);
     }
 
