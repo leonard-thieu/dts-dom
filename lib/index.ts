@@ -1,4 +1,8 @@
-export interface DeclarationBase {
+export interface Child<TParent> {
+    parent: TParent | undefined;
+}
+
+export abstract class DeclarationBase {
     jsDocComment?: string;
     comment?: string;
     flags?: DeclarationFlags;
@@ -32,13 +36,13 @@ export interface Parameter {
 export interface TypeParameter {
     kind: "type-parameter";
     name: string;
-    baseType?: ObjectTypeReference|TypeParameter;
+    baseType?: ObjectTypeReference | TypeParameter;
 }
 
 export interface IndexSignature {
     kind: "index-signature";
     name: string;
-    indexType: ("string"|"number");
+    indexType: ("string" | "number");
     valueType: Type;
 }
 
@@ -57,7 +61,7 @@ export interface MethodDeclaration extends DeclarationBase {
     typeParameters: TypeParameter[];
 }
 
-export interface FunctionDeclaration extends DeclarationBase {
+export interface FunctionDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
     kind: "function";
     name: string;
     parameters: Parameter[];
@@ -70,7 +74,7 @@ export interface ConstructorDeclaration extends DeclarationBase {
     parameters: Parameter[];
 }
 
-export interface ClassDeclaration extends DeclarationBase {
+export interface ClassDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
     kind: "class";
     name: string;
     members: ClassMember[];
@@ -79,7 +83,7 @@ export interface ClassDeclaration extends DeclarationBase {
     baseType?: ObjectTypeReference;
 }
 
-export interface InterfaceDeclaration extends DeclarationBase {
+export interface InterfaceDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
     kind: "interface";
     name: string;
     members: InterfaceMember[];
@@ -105,13 +109,27 @@ export interface ImportDefaultDeclaration extends DeclarationBase {
     from: string;
 }
 
-export interface NamespaceDeclaration extends DeclarationBase {
-    kind: "namespace";
-    name: string;
-    members: NamespaceMember[];
+export class NamespaceDeclaration extends DeclarationBase implements Child<NamespaceDeclaration> {
+    constructor(public readonly name: string) {
+        super();
+
+        const oldPush = this.members.push.bind(this.members);
+        const self = this;
+        this.members.push = function(...items: NamespaceMember[]) {
+            for (const item of items) {
+                item.parent = self;
+            }
+
+            return oldPush(...items);
+        };
+    }
+
+    readonly kind: "namespace" = "namespace";
+    readonly members: NamespaceMember[] = [];
+    parent: NamespaceDeclaration;
 }
 
-export interface ConstDeclaration extends DeclarationBase {
+export interface ConstDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
     kind: "const";
     name: string;
     type: Type;
@@ -149,7 +167,7 @@ export interface FunctionType {
     returnType: Type;
 }
 
-export interface TypeAliasDeclaration extends DeclarationBase {
+export interface TypeAliasDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
     kind: "alias";
     name: string;
     type: Type;
@@ -198,7 +216,7 @@ export type Import = ImportAllDeclaration | ImportDefaultDeclaration | ImportNam
 
 export type NamespaceMember = InterfaceDeclaration | TypeAliasDeclaration | ClassDeclaration | NamespaceDeclaration | ConstDeclaration | FunctionDeclaration;
 export type ModuleMember = InterfaceDeclaration | TypeAliasDeclaration | ClassDeclaration | NamespaceDeclaration | ConstDeclaration | FunctionDeclaration | Import;
-export type TopLevelDeclaration =  NamespaceMember | ExportEqualsDeclaration | ModuleDeclaration | EnumDeclaration | Import;
+export type TopLevelDeclaration = NamespaceMember | ExportEqualsDeclaration | ModuleDeclaration | EnumDeclaration | Import;
 
 export enum DeclarationFlags {
     None = 0,
@@ -220,7 +238,7 @@ export enum ParameterFlags {
 
 export const config = {
     wrapJsDocComments: true,
-    outputEol: '\r\n',
+    outputEol: "\r\n",
 };
 
 export const create = {
@@ -229,46 +247,48 @@ export const create = {
             name,
             baseTypes: [],
             kind: "interface",
-            members: []
+            members: [],
+            parent: undefined,
         };
     },
 
     class(name: string): ClassDeclaration {
         return {
-            kind: 'class',
+            kind: "class",
             name,
             members: [],
             implements: [],
-            typeParameters: []
+            typeParameters: [],
+            parent: undefined,
         };
     },
 
-    typeParameter(name: string, baseType?: ObjectTypeReference|TypeParameter): TypeParameter {
+    typeParameter(name: string, baseType?: ObjectTypeReference | TypeParameter): TypeParameter {
         return {
-            kind: 'type-parameter',
-            name, baseType
+            kind: "type-parameter",
+            name, baseType,
         };
     },
 
     enum(name: string, constant: boolean = false): EnumDeclaration {
         return {
-            kind: 'enum',
+            kind: "enum",
             name, constant,
-            members: []
+            members: [],
         };
     },
 
     enumValue(name: string): EnumMemberDeclaration {
         return {
-            kind: 'enum-value',
-            name
+            kind: "enum-value",
+            name,
         };
     },
 
     property(name: string, type: Type, flags = DeclarationFlags.None): PropertyDeclaration {
         return {
             kind: "property",
-            name, type, flags
+            name, type, flags,
         };
     },
 
@@ -276,7 +296,7 @@ export const create = {
         return {
             kind: "method",
             typeParameters: [],
-            name, parameters, returnType, flags
+            name, parameters, returnType, flags,
         };
     },
 
@@ -284,7 +304,7 @@ export const create = {
         return {
             kind: "call-signature",
             typeParameters: [],
-            parameters, returnType
+            parameters, returnType,
         };
     },
 
@@ -292,21 +312,22 @@ export const create = {
         return {
             kind: "function",
             typeParameters: [],
-            name, parameters, returnType
+            name, parameters, returnType,
+            parent: undefined,
         };
     },
 
     functionType(parameters: Parameter[], returnType: Type): FunctionType {
         return {
             kind: "function-type",
-            parameters, returnType
+            parameters, returnType,
         };
     },
 
     parameter(name: string, type: Type, flags = ParameterFlags.None): Parameter {
         return {
             kind: "parameter",
-            name, type, flags
+            name, type, flags,
         };
     },
 
@@ -314,131 +335,130 @@ export const create = {
         return {
             kind: "constructor",
             parameters,
-            flags
+            flags,
         };
     },
 
     const(name: string, type: Type): ConstDeclaration {
         return {
-            kind: "const", name, type
+            kind: "const", name, type,
+            parent: undefined,
         };
     },
 
     alias(name: string, type: Type): TypeAliasDeclaration {
         return {
             kind: "alias", name, type,
-            typeParameters: []
+            typeParameters: [],
+            parent: undefined,
         };
     },
 
     namespace(name: string): NamespaceDeclaration {
-        return {
-            kind: "namespace", name,
-            members: []
-        };
+        return new NamespaceDeclaration(name);
     },
 
     objectType(members: InterfaceMember[]): ObjectType {
         return {
             kind: "object",
-            members
+            members,
         };
     },
 
-    indexSignature(name: string, indexType: ('string'|'number'), valueType: Type): IndexSignature {
+    indexSignature(name: string, indexType: ("string" | "number"), valueType: Type): IndexSignature {
         return {
-            kind: 'index-signature',
-            name, indexType, valueType
-        }
+            kind: "index-signature",
+            name, indexType, valueType,
+        };
     },
 
     array(type: Type): ArrayTypeReference {
         return {
             kind: "array",
-            type
+            type,
         };
     },
 
     namedTypeReference(name: string): NamedTypeReference {
         return {
-            kind: 'name',
-            name
+            kind: "name",
+            name,
         };
     },
 
     exportEquals(target: string): ExportEqualsDeclaration {
         return {
-            kind: 'export=',
-            target
+            kind: "export=",
+            target,
         };
     },
 
     module(name: string): ModuleDeclaration {
         return {
-            kind: 'module',
+            kind: "module",
             name,
-            members: []
+            members: [],
         };
     },
 
     importAll(name: string, from: string): ImportAllDeclaration {
         return {
-            kind: 'importAll',
+            kind: "importAll",
             name,
-            from
+            from,
         };
     },
 
     importDefault(name: string, from: string): ImportDefaultDeclaration {
         return {
-            kind: 'importDefault',
+            kind: "importDefault",
             name,
-            from
+            from,
         };
     },
 
     importNamed(name: string, as: string, from?: string): ImportNamedDeclaration {
         return {
-            kind: 'importNamed',
+            kind: "importNamed",
             name,
-            as: typeof from !== 'undefined' ? as : undefined,
-            from: typeof from !== 'undefined' ? from : as
+            as: typeof from !== "undefined" ? as : undefined,
+            from: typeof from !== "undefined" ? from : as,
         };
     },
 
     union(members: Type[]): UnionType {
         return {
-            kind: 'union',
-            members
+            kind: "union",
+            members,
         };
     },
 
     typeof(type: NamedTypeReference): TypeofReference {
         return {
-            kind: 'typeof',
-            type
+            kind: "typeof",
+            type,
         };
-    }
+    },
 };
 
 export const type = {
     array(type: Type): ArrayTypeReference {
         return {
             kind: "array",
-            type
-        }
+            type,
+        };
     },
     stringLiteral(string: string): PrimitiveType {
         return {
             kind: "string-literal",
-            value: string
-        }
+            value: string,
+        };
     },
     numberLiteral(number: number): PrimitiveType {
         return {
             kind: "number-literal",
-            value: number
-        }
+            value: number,
+        };
     },
     string: <PrimitiveType>"string",
     number: <PrimitiveType>"number",
@@ -450,17 +470,157 @@ export const type = {
     undefined: <PrimitiveType>"undefined",
     true: <PrimitiveType>"true",
     false: <PrimitiveType>"false",
-    this: <ThisType>"this"
+    this: <ThisType>"this",
+    is: {
+        functionType(t: Type): t is FunctionType {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "function-type":
+                        return true;
+                }
+            }
+            return false;
+        },
+        arrayTypeReference(t: Type): t is ArrayTypeReference {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "array":
+                        return true;
+                }
+            }
+            return false;
+        },
+        namedTypeReference(t: Type): t is NamedTypeReference {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "name":
+                        return true;
+                }
+            }
+            return false;
+        },
+        primitiveType(t: Type): t is PrimitiveType {
+            if (typeof t === "string") {
+                switch (t) {
+                    case "string":
+                    case "number":
+                    case "boolean":
+                    case "any":
+                    case "void":
+                    case "object":
+                    case "null":
+                    case "undefined":
+                    case "true":
+                    case "false":
+                        return true;
+                }
+            } else {
+                switch (t.kind) {
+                    case "string-literal":
+                    case "number-literal":
+                        return true;
+                }
+            }
+            return false;
+        },
+        thisType(t: Type): t is ThisType {
+            if (typeof t === "string") {
+                switch (t) {
+                    case "this":
+                        return true;
+                }
+            }
+            return false;
+        },
+        typeReference(t: Type): t is TypeReference {
+            if (type.is.topLevelDeclaration(t)) { return true; }
+            if (type.is.namedTypeReference(t)) { return true; }
+            if (type.is.arrayTypeReference(t)) { return true; }
+            if (type.is.primitiveType(t)) { return true; }
+            return false;
+        },
+        objectTypeReference(t: Type): t is ObjectTypeReference {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "class":
+                    case "interface":
+                        return true;
+                }
+            }
+            return false;
+        },
+        objectType(t: Type): t is ObjectType {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "object":
+                    case "interface":
+                    case "class":
+                        return true;
+                }
+            }
+            return false;
+        },
+        import(t: Type): t is Import {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "importAll":
+                    case "importNamed":
+                    case "importDefault":
+                        return true;
+                }
+            }
+            return false;
+        },
+        namespaceMember(t: Type): t is NamespaceMember {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "interface":
+                    case "alias":
+                    case "class":
+                    case "namespace":
+                    case "const":
+                    case "function":
+                        return true;
+                }
+            }
+            return false;
+        },
+        topLevelDeclaration(t: Type): t is TopLevelDeclaration {
+            if (typeof t !== "string") {
+                switch (t.kind) {
+                    case "export=":
+                    case "module":
+                    case "enum":
+                        return true;
+                }
+                if (type.is.namespaceMember(t)) { return true; }
+                if (type.is.import(t)) { return true; }
+            }
+            return false;
+        },
+        optionalParameter(p: Parameter) {
+            return hasFlag(p.flags, ParameterFlags.Optional);
+        },
+        staticClassMember(m: ClassMember) {
+            switch (m.kind) {
+                case "property":
+                case "method":
+                case "constructor":
+                    return true;
+            }
+            return false;
+        },
+    },
 };
 
-export const reservedWords = ['abstract', 'await', 'boolean', 'break', 'byte', 'case',
-	'catch', 'char', 'class', 'const', 'continue', 'debugger', 'default',
-	'delete', 'do', 'double', 'else', 'enum', 'export', 'extends', 'false',
-	'final', 'finally', 'float', 'for', 'function', 'goto', 'if', 'implements',
-	'import', 'in', 'instanceof', 'int', 'interface', 'let', 'long', 'native',
-	'new', 'null', 'package', 'private', 'protected', 'public', 'return', 'short',
-	'static', 'super', 'switch', 'synchronized', 'this', 'throw', 'throws',
-	'transient', 'true', 'try', 'typeof', 'var', 'void', 'volatile', 'while', 'with', 'yield'];
+export const reservedWords = ["abstract", "await", "boolean", "break", "byte", "case",
+    "catch", "char", "class", "const", "continue", "debugger", "default",
+    "delete", "do", "double", "else", "enum", "export", "extends", "false",
+    "final", "finally", "float", "for", "function", "goto", "if", "implements",
+    "import", "in", "instanceof", "int", "interface", "let", "long", "native",
+    "new", "null", "package", "private", "protected", "public", "return", "short",
+    "static", "super", "switch", "synchronized", "this", "throw", "throws",
+    "transient", "true", "try", "typeof", "var", "void", "volatile", "while", "with", "yield"];
 
 /** IdentifierName can be written as unquoted property names, but may be reserved words. */
 export function isIdentifierName(s: string) {
@@ -491,6 +651,14 @@ export function never(x: never, err: string): never {
     throw new Error(err);
 }
 
+function hasFlag<T extends number>(haystack: T | undefined, needle: T): boolean;
+function hasFlag(haystack: number | undefined, needle: number) {
+    if (haystack === undefined) {
+        return false;
+    }
+    return !!(needle & haystack);
+}
+
 export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.None): string {
     let output = "";
     let indentLevel = 0;
@@ -506,7 +674,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
 
     function tab() {
         for (let i = 0; i < indentLevel; i++) {
-            output = output + '    ';
+            output = output + "    ";
         }
     }
 
@@ -520,41 +688,41 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function classFlagsToString(flags: DeclarationFlags | undefined = DeclarationFlags.None): string {
-        let out = '';
+        let out = "";
 
         if (flags && flags & DeclarationFlags.Abstract) {
-            out += 'abstract ';
+            out += "abstract ";
         }
 
         return out;
     }
 
     function memberFlagsToString(flags: DeclarationFlags | undefined = DeclarationFlags.None): string {
-        let out = '';
+        let out = "";
 
         if (flags & DeclarationFlags.Private) {
-            out += 'private ';
+            out += "private ";
         }
         else if (flags & DeclarationFlags.Protected) {
-            out += 'protected ';
+            out += "protected ";
         }
 
         if (flags & DeclarationFlags.Static) {
-            out += 'static ';
+            out += "static ";
         }
 
         if (flags & DeclarationFlags.Abstract) {
-            out += 'abstract ';
+            out += "abstract ";
         }
 
         if (flags & DeclarationFlags.ReadOnly) {
-            out += 'readonly ';
+            out += "readonly ";
         }
 
         return out;
     }
 
-    function startWithDeclareOrExport(s: string, flags: DeclarationFlags | undefined  = DeclarationFlags.None) {
+    function startWithDeclareOrExport(s: string, flags: DeclarationFlags | undefined = DeclarationFlags.None) {
         if (getContextFlags() & ContextFlags.InAmbientNamespace) {
             // Already in an all-export context
             start(s);
@@ -572,7 +740,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function needsParens(d: Type) {
-        if (typeof d === 'string') {
+        if (typeof d === "string") {
             return false;
         }
         switch (d.kind) {
@@ -594,13 +762,13 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         }
         if (decl.jsDocComment) {
             if (config.wrapJsDocComments) {
-                start('/**');
+                start("/**");
                 newline();
-                for(const line of decl.jsDocComment.split(/\r?\n/g)) {
+                for (const line of decl.jsDocComment.split(/\r?\n/g)) {
                     start(` * ${line}`);
                     newline();
                 }
-                start(' */');
+                start(" */");
             }
             else {
                 start(decl.jsDocComment);
@@ -610,16 +778,8 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         }
     }
 
-    function hasFlag<T extends number>(haystack: T | undefined, needle: T): boolean;
-    function hasFlag(haystack: number | undefined, needle: number) {
-        if (haystack === undefined) {
-            return false;
-        }
-        return !!(needle & haystack);
-    }
-
     function printInterfaceMembers(members: InterfaceMember[]) {
-        print('{');
+        print("{");
         newline();
         indentLevel++;
         for (const member of members) {
@@ -627,18 +787,18 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         }
         indentLevel--;
         tab();
-        print('}');
+        print("}");
 
         function printMember(member: InterfaceMember) {
             switch (member.kind) {
-                case 'index-signature':
+                case "index-signature":
                     printDeclarationComments(member);
                     tab();
                     print(`[${member.name}: `);
                     writeReference(member.indexType);
-                    print(']: ');
+                    print("]: ");
                     writeReference(member.valueType);
-                    print(';');
+                    print(";");
                     newline();
                     return;
                 case "call-signature": {
@@ -660,34 +820,39 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     newline();
                     return;
                 }
-                case 'method':
+                case "method":
                     printDeclarationComments(member);
                     tab();
                     print(quoteIfNeeded(member.name));
-                    if (hasFlag(member.flags, DeclarationFlags.Optional)) print('?');
-                    print('(');
+                    if (hasFlag(member.flags, DeclarationFlags.Optional)) print("?");
+                    print("(");
                     let first = true;
                     for (const param of member.parameters) {
-                        if (!first) print(', ');
+                        if (!first) print(", ");
                         first = false;
                         print(param.name);
-                        print(': ');
+                        print(": ");
                         writeReference(param.type);
                     }
-                    print('): ');
+                    print("): ");
                     writeReference(member.returnType);
-                    print(';');
+                    print(";");
                     newline();
                     return;
-                case 'property':
+                case "property":
+                    if (type.is.functionType(member.type)) {
+                        const m = create.method(member.name, member.type.parameters, member.type.returnType);
+                        printMember(m);
+                        return;
+                    }
                     printDeclarationComments(member);
                     tab();
-                    if (hasFlag(member.flags, DeclarationFlags.ReadOnly)) print('readonly ');
+                    if (hasFlag(member.flags, DeclarationFlags.ReadOnly)) print("readonly ");
                     print(quoteIfNeeded(member.name));
-                    if (hasFlag(member.flags, DeclarationFlags.Optional)) print('?');
-                    print(': ');
+                    if (hasFlag(member.flags, DeclarationFlags.Optional)) print("?");
+                    print(": ");
                     writeReference(member.type);
-                    print(';');
+                    print(";");
                     newline();
                     return;
             }
@@ -696,34 +861,47 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function writeReference(d: Type) {
-        if (typeof d === 'string') {
+        if (typeof d === "string") {
             print(d);
         } else {
             const e = d;
             switch (e.kind) {
-                case "type-parameter":
-                case "class":
-                case "interface":
                 case "name":
-                case "alias":
                     print(e.name);
                     break;
 
+                case "type-parameter":
+                case "class":
+                case "interface":
+                case "alias":
+                    let f: Type | undefined = e;
+                    const names = [];
+                    while (f) {
+                        if (type.is.namespaceMember(f)) {
+                            names.unshift(f.name);
+                            f = f.parent;
+                        } else {
+                            f = undefined;
+                        }
+                    }
+                    print(names.join("."));
+                    break;
+
                 case "array":
-                    if (needsParens(e.type)) print('(');
+                    if (needsParens(e.type)) print("(");
                     writeReference(e.type);
-                    if (needsParens(e.type)) print(')');
-                    print('[]');
+                    if (needsParens(e.type)) print(")");
+                    print("[]");
                     break;
 
                 case "object":
                     printInterfaceMembers(e.members);
                     break;
-                    
+
                 case "string-literal":
                     print(JSON.stringify(e.value));
                     break;
-                    
+
                 case "number-literal":
                     if (isNaN(e.value)) print("typeof NaN");
                     else if (!isFinite(e.value)) print("typeof Infinity");
@@ -735,7 +913,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     break;
 
                 case "union":
-                    writeDelimited(e.members, ' | ', writeReference);
+                    writeDelimited(e.members, " | ", writeReference);
                     break;
 
                 case "typeof":
@@ -753,19 +931,19 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     function writeTypeParameters(params: TypeParameter[]) {
         if (params.length === 0) return;
 
-        print('<');
+        print("<");
 
         let first = true;
 
         for (const p of params) {
-            if (!first) print(', ');
+            if (!first) print(", ");
 
             print(p.name);
 
             if (p.baseType) {
-                print(' extends ');
+                print(" extends ");
 
-                if (p.baseType.kind === 'type-parameter')
+                if (p.baseType.kind === "type-parameter")
                     print(p.baseType.name);
                 else
                     writeReference(p.baseType);
@@ -774,7 +952,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
             first = false;
         }
 
-        print('>');
+        print(">");
     }
 
     function writeInterface(d: InterfaceDeclaration) {
@@ -784,7 +962,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
             print(`extends `);
             let first = true;
             for (const baseType of d.baseTypes) {
-                if (!first) print(', ');
+                if (!first) print(", ");
                 writeReference(baseType);
                 first = false;
             }
@@ -794,10 +972,10 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function writeFunctionType(f: FunctionType) {
-        print('(');
-        writeDelimited(f.parameters, ', ', writeParameter);
-        print(')');
-        print(' => ');
+        print("(");
+        writeDelimited(f.parameters, ", ", writeParameter);
+        print(")");
+        print(" => ");
         writeReference(f.returnType);
     }
 
@@ -810,11 +988,11 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
 
         startWithDeclareOrExport(`function ${f.name}`, f.flags);
         writeTypeParameters(f.typeParameters);
-        print('(')
-        writeDelimited(f.parameters, ', ', writeParameter);
-        print('): ');
+        print("(");
+        writeDelimited(f.parameters, ", ", writeParameter);
+        print("): ");
         writeReference(f.returnType);
-        print(';');
+        print(";");
         newline();
 
         if (!isIdentifier(f.name)) {
@@ -825,7 +1003,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
 
     function writeParameter(p: Parameter) {
         const flags = p.flags || DeclarationFlags.None;
-        print(`${flags & ParameterFlags.Rest ? '...' : ''}${p.name}${flags & ParameterFlags.Optional ? '?' : ''}: `);
+        print(`${flags & ParameterFlags.Rest ? "..." : ""}${p.name}${flags & ParameterFlags.Optional ? "?" : ""}: `);
         writeReference(p.type);
     }
 
@@ -845,19 +1023,19 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         startWithDeclareOrExport(`${classFlagsToString(c.flags)}class ${c.name}`, c.flags);
         writeTypeParameters(c.typeParameters);
         if (c.baseType) {
-            print(' extends ');
+            print(" extends ");
             writeReference(c.baseType);
         }
         if (c.implements && c.implements.length) {
-            print(' implements ');
+            print(" implements ");
             let first = true;
             for (const impl of c.implements) {
-                if (!first) print(', ');
+                if (!first) print(", ");
                 writeReference(impl);
                 first = false;
             }
         }
-        print(' {');
+        print(" {");
         newline();
         indentLevel++;
         for (const m of c.members) {
@@ -865,7 +1043,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
             newline();
         }
         indentLevel--;
-        start('}');
+        start("}");
         newline();
     }
 
@@ -882,17 +1060,18 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
 
     function writeConstructorDeclaration(ctor: ConstructorDeclaration) {
         printDeclarationComments(ctor);
-        start('constructor(');
-        writeDelimited(ctor.parameters, ', ', writeParameter);
-        print(');')
+        start("constructor(");
+        writeDelimited(ctor.parameters, ", ", writeParameter);
+        print(");");
         newline();
     }
 
     function writePropertyDeclaration(p: PropertyDeclaration) {
         printDeclarationComments(p);
-        start(`${memberFlagsToString(p.flags)}${quoteIfNeeded(p.name)}: `);
+        start(`${memberFlagsToString(p.flags)}${quoteIfNeeded(p.name)}`);
+        print(": ");
         writeReference(p.type);
-        print(';');
+        print(";");
         newline();
     }
 
@@ -900,11 +1079,11 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         printDeclarationComments(m);
         start(`${memberFlagsToString(m.flags)}${quoteIfNeeded(m.name)}`);
         writeTypeParameters(m.typeParameters);
-        print('(');
-        writeDelimited(m.parameters, ', ', writeParameter);
-        print('): ');
+        print("(");
+        writeDelimited(m.parameters, ", ", writeParameter);
+        print("): ");
         writeReference(m.returnType);
-        print(';');
+        print(";");
         newline();
     }
 
@@ -928,7 +1107,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         printDeclarationComments(c);
         startWithDeclareOrExport(`const ${c.name}: `, c.flags);
         writeReference(c.type);
-        print(';');
+        print(";");
         newline();
     }
 
@@ -936,9 +1115,9 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         printDeclarationComments(a);
         startWithDeclareOrExport(`type ${a.name}`, a.flags);
         writeTypeParameters(a.typeParameters);
-        print(' = ');
+        print(" = ");
         writeReference(a.type);
-        print(';');
+        print(";");
         newline();
     }
 
@@ -984,7 +1163,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
 
     function writeEnum(e: EnumDeclaration) {
         printDeclarationComments(e);
-        startWithDeclareOrExport(`${e.constant ? 'const ' : ''}enum ${e.name} {`, e.flags);
+        startWithDeclareOrExport(`${e.constant ? "const " : ""}enum ${e.name} {`, e.flags);
         newline();
         indentLevel++;
         for (const member of e.members) {
@@ -998,12 +1177,12 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     function writeEnumValue(e: EnumMemberDeclaration) {
         printDeclarationComments(e);
         start(e.name);
-        print(',');
+        print(",");
         newline();
     }
 
     function writeDeclaration(d: TopLevelDeclaration) {
-        if (typeof d === 'string') {
+        if (typeof d === "string") {
             return print(d);
         } else {
             switch (d.kind) {
