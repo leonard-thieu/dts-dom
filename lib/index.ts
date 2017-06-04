@@ -240,6 +240,9 @@ export const config = {
     wrapJsDocComments: true,
     outputEol: "\r\n",
     preferMethodSignature: false,
+    chop: {
+        methods: Number.MAX_SAFE_INTEGER,
+    },
 };
 
 export const create = {
@@ -683,6 +686,10 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         output = output + s;
     }
 
+    function getLastLineLength() {
+        return output.length - output.lastIndexOf("\n");
+    }
+
     function start(s: string) {
         tab();
         print(s);
@@ -822,23 +829,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     return;
                 }
                 case "method":
-                    printDeclarationComments(member);
-                    tab();
-                    print(quoteIfNeeded(member.name));
-                    if (hasFlag(member.flags, DeclarationFlags.Optional)) print("?");
-                    print("(");
-                    let first = true;
-                    for (const param of member.parameters) {
-                        if (!first) print(", ");
-                        first = false;
-                        print(param.name);
-                        print(": ");
-                        writeReference(param.type);
-                    }
-                    print("): ");
-                    writeReference(member.returnType);
-                    print(";");
-                    newline();
+                    writeMethodDeclaration(member);
                     return;
                 case "property":
                     if (config.preferMethodSignature &&
@@ -846,7 +837,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                         const m = create.method(member.name, member.type.parameters, member.type.returnType, member.flags);
                         m.comment = member.comment;
                         m.jsDocComment = member.jsDocComment;
-                        printMember(m);
+                        writeMethodDeclaration(m);
                         return;
                     }
                     printDeclarationComments(member);
@@ -1082,9 +1073,17 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     function writeMethodDeclaration(m: MethodDeclaration) {
         printDeclarationComments(m);
         start(`${memberFlagsToString(m.flags)}${quoteIfNeeded(m.name)}`);
+        if (hasFlag(m.flags, DeclarationFlags.Optional)) print("?");
         writeTypeParameters(m.typeParameters);
         print("(");
+        const oldLength = output.length;
+        const startFrom = getLastLineLength();
         writeDelimited(m.parameters, ", ", writeParameter);
+        if (getLastLineLength() > config.chop.methods) {
+            output = output.slice(0, oldLength);
+            const sep = `,${config.outputEol}${Array(startFrom).join(" ")}`;
+            writeDelimited(m.parameters, sep, writeParameter);
+        }
         print("): ");
         writeReference(m.returnType);
         print(";");
