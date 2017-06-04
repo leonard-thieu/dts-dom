@@ -239,6 +239,7 @@ export enum ParameterFlags {
 export const config = {
     wrapJsDocComments: true,
     outputEol: "\r\n",
+    preferMethodSignature: false,
 };
 
 export const create = {
@@ -840,8 +841,11 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     newline();
                     return;
                 case "property":
-                    if (type.is.functionType(member.type)) {
-                        const m = create.method(member.name, member.type.parameters, member.type.returnType);
+                    if (config.preferMethodSignature &&
+                        type.is.functionType(member.type)) {
+                        const m = create.method(member.name, member.type.parameters, member.type.returnType, member.flags);
+                        m.comment = member.comment;
+                        m.jsDocComment = member.jsDocComment;
                         printMember(m);
                         return;
                     }
