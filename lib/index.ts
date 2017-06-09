@@ -2,41 +2,58 @@ export interface Child<TParent> {
     parent: TParent | undefined;
 }
 
+export interface HasName {
+    name: string;
+}
+
 export abstract class DeclarationBase {
     jsDocComment?: string;
     comment?: string;
     flags?: DeclarationFlags;
 }
 
-export interface EnumMemberDeclaration extends DeclarationBase {
+export interface EnumMemberDeclaration extends DeclarationBase, HasName {
     kind: "enum-value";
-    name: string;
 }
 
-export interface EnumDeclaration extends DeclarationBase {
+export interface EnumDeclaration extends DeclarationBase, HasName {
     kind: "enum";
-    name: string;
     members: EnumMemberDeclaration[];
     constant: boolean;
 }
 
-export interface PropertyDeclaration extends DeclarationBase {
+export interface PropertyDeclaration extends DeclarationBase, HasName {
     kind: "property";
-    name: string;
     type: Type;
 }
 
-export interface Parameter {
-    kind: "parameter";
-    name: string;
-    type: Type;
-    flags?: ParameterFlags;
+export class Parameter implements HasName {
+    constructor(public name: string,
+                public type: Type) { }
+
+    kind: "parameter" = "parameter";
+
+    // region optional
+
+    private _optional: boolean;
+    get optional(): boolean {
+        return this._optional;
+    }
+
+    set optional(value: boolean) {
+        this._optional = value;
+    }
+
+    // endregion
+
+    rest: boolean;
 }
 
 export interface TypeParameter {
     kind: "type-parameter";
     name: string;
     baseType?: ObjectTypeReference | TypeParameter;
+    default?: Type;
 }
 
 export interface IndexSignature {
@@ -46,27 +63,22 @@ export interface IndexSignature {
     valueType: Type;
 }
 
-export interface CallSignature extends DeclarationBase {
+export interface CallSignature extends DeclarationBase, GenericType {
     kind: "call-signature";
     parameters: Parameter[];
-    returnType: Type;
-    typeParameters: TypeParameter[];
+    returnType: ReturnType;
 }
 
-export interface MethodDeclaration extends DeclarationBase {
+export interface MethodDeclaration extends DeclarationBase, HasName, GenericType {
     kind: "method";
-    name: string;
     parameters: Parameter[];
-    returnType: Type;
-    typeParameters: TypeParameter[];
+    returnType: ReturnType;
 }
 
-export interface FunctionDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
+export interface FunctionDeclaration extends DeclarationBase, HasName, GenericType, Child<NamespaceDeclaration> {
     kind: "function";
-    name: string;
     parameters: Parameter[];
-    returnType: Type;
-    typeParameters: TypeParameter[];
+    returnType: ReturnType;
 }
 
 export interface ConstructorDeclaration extends DeclarationBase {
@@ -74,20 +86,17 @@ export interface ConstructorDeclaration extends DeclarationBase {
     parameters: Parameter[];
 }
 
-export interface ClassDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
+export interface ClassDeclaration extends DeclarationBase, HasName, GenericType, Child<NamespaceDeclaration> {
     kind: "class";
-    name: string;
     members: ClassMember[];
-    implements: InterfaceDeclaration[];
-    typeParameters: TypeParameter[];
+    implements: (InterfaceDeclaration | NamedTypeReference)[];
     baseType?: ObjectTypeReference;
 }
 
-export interface InterfaceDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
+export interface InterfaceDeclaration extends DeclarationBase, HasName, GenericType, Child<NamespaceDeclaration> {
     kind: "interface";
-    name: string;
-    members: InterfaceMember[];
-    baseTypes?: ObjectTypeReference[];
+    members: ObjectTypeMember[];
+    baseTypes: ObjectTypeReference[];
 }
 
 export interface ImportAllDeclaration extends DeclarationBase {
@@ -109,7 +118,7 @@ export interface ImportDefaultDeclaration extends DeclarationBase {
     from: string;
 }
 
-export class NamespaceDeclaration extends DeclarationBase implements Child<NamespaceDeclaration> {
+export class NamespaceDeclaration extends DeclarationBase implements HasName, Child<NamespaceDeclaration> {
     constructor(public readonly name: string) {
         super();
 
@@ -129,9 +138,13 @@ export class NamespaceDeclaration extends DeclarationBase implements Child<Names
     parent: NamespaceDeclaration;
 }
 
-export interface ConstDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
+export class GlobalDeclaration {
+    readonly kind: "global" = "global";
+    readonly members: NamespaceMember[] = [];
+}
+
+export interface ConstDeclaration extends DeclarationBase, HasName, Child<NamespaceDeclaration> {
     kind: "const";
-    name: string;
     type: Type;
 }
 
@@ -148,7 +161,7 @@ export interface ModuleDeclaration extends DeclarationBase {
 
 export interface ObjectType {
     kind: "object";
-    members: InterfaceMember[];
+    members: ObjectTypeMember[];
 }
 
 export interface UnionType {
@@ -161,32 +174,30 @@ export interface IntersectionType {
     members: Type[];
 }
 
-export interface FunctionType {
+export interface FunctionType extends GenericType {
     kind: "function-type";
     parameters: Parameter[];
-    returnType: Type;
+    returnType: ReturnType;
 }
 
-export interface TypeAliasDeclaration extends DeclarationBase, Child<NamespaceDeclaration> {
+export interface TypeAliasDeclaration extends DeclarationBase, HasName, GenericType, Child<NamespaceDeclaration> {
     kind: "alias";
-    name: string;
-    type: Type;
-    typeParameters: TypeParameter[];
-}
-
-export interface ArrayTypeReference {
-    kind: "array";
     type: Type;
 }
 
-export interface NamedTypeReference {
+export interface NamedTypeReference extends HasName, GenericType, Child<NamespaceDeclaration> {
     kind: "name";
-    name: string;
 }
 
 export interface TypeofReference {
     kind: "typeof";
-    type: NamedTypeReference;
+    type: TypeReference;
+}
+
+export interface TypePredicate {
+    kind: "type-predicate";
+    parameter: Parameter;
+    type: Type;
 }
 
 export interface StringLiteral {
@@ -199,24 +210,41 @@ export interface NumberLiteral {
     value: number;
 }
 
+export interface GenericType {
+    kind: string;
+    typeParameters: TypeParameter[];
+}
+
+export class GenericTypeReference {
+    constructor(public type: GenericType) { }
+
+    kind: "generic-type-reference" = "generic-type-reference";
+    typeArguments: TypeReference[] = [];
+}
+
 export type PrimitiveType = "string" | "number" | "boolean" | "any" | "void" | "object" | "null" | "undefined" | "true" | "false" | StringLiteral | NumberLiteral;
 
 export type ThisType = "this";
 
-export type TypeReference = TopLevelDeclaration | NamedTypeReference | ArrayTypeReference | PrimitiveType;
+export type TypeReference = TopLevelDeclaration | NamedTypeReference | GenericTypeReference | PrimitiveType | ThisType | UnionType;
 
-export type ObjectTypeReference = ClassDeclaration | InterfaceDeclaration;
-export type ObjectTypeMember = PropertyDeclaration | MethodDeclaration | IndexSignature;
-export type InterfaceMember = ObjectTypeMember | CallSignature;
-export type ClassMember = ObjectTypeMember | ConstructorDeclaration;
+export type ObjectTypeReference = ClassDeclaration | InterfaceDeclaration | NamedTypeReference | GenericTypeReference;
+export type ObjectTypeMember = PropertyDeclaration | MethodDeclaration | IndexSignature | CallSignature;
+export type ClassMember = PropertyDeclaration | MethodDeclaration | IndexSignature | ConstructorDeclaration;
 
-export type Type = TypeReference | UnionType | IntersectionType | PrimitiveType | ObjectType | TypeofReference | FunctionType | TypeParameter | ThisType;
+export type Type = TypeReference | UnionType | IntersectionType | ObjectType | TypeofReference | FunctionType | TypeParameter | ThisType;
+export type ReturnType = Type | TypePredicate;
 
 export type Import = ImportAllDeclaration | ImportDefaultDeclaration | ImportNamedDeclaration;
 
 export type NamespaceMember = InterfaceDeclaration | TypeAliasDeclaration | ClassDeclaration | NamespaceDeclaration | ConstDeclaration | FunctionDeclaration;
 export type ModuleMember = InterfaceDeclaration | TypeAliasDeclaration | ClassDeclaration | NamespaceDeclaration | ConstDeclaration | FunctionDeclaration | Import;
-export type TopLevelDeclaration = NamespaceMember | ExportEqualsDeclaration | ModuleDeclaration | EnumDeclaration | Import;
+export type TopLevelDeclaration = NamespaceMember | ExportEqualsDeclaration | ModuleDeclaration | EnumDeclaration | Import | GlobalDeclaration;
+
+type _GenericType = any;
+type _NamedType = _GenericType | any;
+type _TypeParameter = any;
+type _TypeReference = _NamedType | _TypeParameter;
 
 export enum DeclarationFlags {
     None = 0,
@@ -239,7 +267,6 @@ export enum ParameterFlags {
 export const config = {
     wrapJsDocComments: true,
     outputEol: "\r\n",
-    preferMethodSignature: false,
     chop: {
         methods: Number.MAX_SAFE_INTEGER,
     },
@@ -253,6 +280,7 @@ export const create = {
             kind: "interface",
             members: [],
             parent: undefined,
+            typeParameters: [],
         };
     },
 
@@ -296,7 +324,7 @@ export const create = {
         };
     },
 
-    method(name: string, parameters: Parameter[], returnType: Type, flags = DeclarationFlags.None): MethodDeclaration {
+    method(name: string, parameters: Parameter[], returnType: ReturnType, flags = DeclarationFlags.None): MethodDeclaration {
         return {
             kind: "method",
             typeParameters: [],
@@ -304,7 +332,7 @@ export const create = {
         };
     },
 
-    callSignature(parameters: Parameter[], returnType: Type): CallSignature {
+    callSignature(parameters: Parameter[], returnType: ReturnType): CallSignature {
         return {
             kind: "call-signature",
             typeParameters: [],
@@ -312,7 +340,7 @@ export const create = {
         };
     },
 
-    function(name: string, parameters: Parameter[], returnType: Type): FunctionDeclaration {
+    function(name: string, parameters: Parameter[], returnType: ReturnType): FunctionDeclaration {
         return {
             kind: "function",
             typeParameters: [],
@@ -321,18 +349,16 @@ export const create = {
         };
     },
 
-    functionType(parameters: Parameter[], returnType: Type): FunctionType {
+    functionType(parameters: Parameter[], returnType: ReturnType): FunctionType {
         return {
             kind: "function-type",
             parameters, returnType,
+            typeParameters: [],
         };
     },
 
-    parameter(name: string, type: Type, flags = ParameterFlags.None): Parameter {
-        return {
-            kind: "parameter",
-            name, type, flags,
-        };
+    parameter(name: string, type: Type): Parameter {
+        return new Parameter(name, type);
     },
 
     constructor(parameters: Parameter[], flags = DeclarationFlags.None): ConstructorDeclaration {
@@ -362,7 +388,11 @@ export const create = {
         return new NamespaceDeclaration(name);
     },
 
-    objectType(members: InterfaceMember[]): ObjectType {
+    global(): GlobalDeclaration {
+        return new GlobalDeclaration();
+    },
+
+    objectType(members: ObjectTypeMember[]): ObjectType {
         return {
             kind: "object",
             members,
@@ -376,10 +406,11 @@ export const create = {
         };
     },
 
-    array(type: Type): ArrayTypeReference {
+    array(type: TypeReference): GenericTypeReference {
         return {
-            kind: "array",
-            type,
+            kind: "generic-type-reference",
+            type: create.namedTypeReference("Array"),
+            typeArguments: [type],
         };
     },
 
@@ -387,6 +418,8 @@ export const create = {
         return {
             kind: "name",
             name,
+            typeParameters: [],
+            parent: undefined,
         };
     },
 
@@ -437,21 +470,55 @@ export const create = {
         };
     },
 
+    intersection(members?: Type[]): IntersectionType {
+        return {
+            kind: "intersection",
+            members: members || [],
+        };
+    },
+
     typeof(type: NamedTypeReference): TypeofReference {
         return {
             kind: "typeof",
             type,
         };
     },
+
+    typePredicate(parameter: Parameter, type: Type): TypePredicate {
+        return {
+            kind: "type-predicate",
+            parameter, type,
+        };
+    },
+
+    genericTypeReference(type: GenericType): GenericTypeReference {
+        return new GenericTypeReference(type);
+    },
+
+    typeReference(type: Type): TypeReference {
+        if (typeof type === "string") { return type; }
+        switch (type.kind) {
+            case "export=":
+            case "global":
+            case "union":
+            case "intersection":
+            case "object":
+            case "typeof":
+            case "function-type":
+                throw new Error();
+
+            case "generic-type-reference":
+                return type;
+
+            case "string-literal":
+            case "number-literal":
+                return type;
+        }
+        return create.namedTypeReference(type.name);
+    },
 };
 
 export const type = {
-    array(type: Type): ArrayTypeReference {
-        return {
-            kind: "array",
-            type,
-        };
-    },
     stringLiteral(string: string): PrimitiveType {
         return {
             kind: "string-literal",
@@ -476,19 +543,28 @@ export const type = {
     false: <PrimitiveType>"false",
     this: <ThisType>"this",
     is: {
+        union(t: Type): t is UnionType {
+            if (typeof t !== "string") { return t.kind === "union"; }
+            return false;
+        },
         functionType(t: Type): t is FunctionType {
+            if (typeof t !== "string") { return t.kind === "function-type"; }
+            return false;
+        },
+        array(t: GenericType): boolean {
             if (typeof t !== "string") {
                 switch (t.kind) {
-                    case "function-type":
-                        return true;
+                    case "name":
+                        const n = t as NamedTypeReference;
+                        return n.name === "Array";
                 }
             }
             return false;
         },
-        arrayTypeReference(t: Type): t is ArrayTypeReference {
+        genericTypeReference(t: Type): t is GenericTypeReference {
             if (typeof t !== "string") {
                 switch (t.kind) {
-                    case "array":
+                    case "generic-type-reference":
                         return true;
                 }
             }
@@ -539,7 +615,7 @@ export const type = {
         typeReference(t: Type): t is TypeReference {
             if (type.is.topLevelDeclaration(t)) { return true; }
             if (type.is.namedTypeReference(t)) { return true; }
-            if (type.is.arrayTypeReference(t)) { return true; }
+            if (type.is.genericTypeReference(t)) { return true; }
             if (type.is.primitiveType(t)) { return true; }
             return false;
         },
@@ -602,9 +678,6 @@ export const type = {
             }
             return false;
         },
-        optionalParameter(p: Parameter) {
-            return hasFlag(p.flags, ParameterFlags.Optional);
-        },
         staticClassMember(m: ClassMember) {
             switch (m.kind) {
                 case "property":
@@ -655,8 +728,8 @@ export function never(x: never, err: string): never {
     throw new Error(err);
 }
 
-function hasFlag<T extends number>(haystack: T | undefined, needle: T): boolean;
-function hasFlag(haystack: number | undefined, needle: number) {
+export function hasFlag<T extends number>(haystack: T | undefined, needle: T): boolean;
+export function hasFlag(haystack: number | undefined, needle: number) {
     if (haystack === undefined) {
         return false;
     }
@@ -669,7 +742,6 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     let contextStack: ContextFlags[] = [rootFlags];
 
     writeDeclaration(rootDecl);
-    newline();
     return output;
 
     function getContextFlags() {
@@ -731,10 +803,13 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function startWithDeclareOrExport(s: string, flags: DeclarationFlags | undefined = DeclarationFlags.None) {
-        if (getContextFlags() & ContextFlags.InAmbientNamespace) {
+        if ((getContextFlags() & ContextFlags.InAmbientNamespace) ||
+            s.indexOf("interface") === 0 ||
+            s.indexOf("type") === 0) {
             // Already in an all-export context
             start(s);
-        } else if (flags & DeclarationFlags.Export) {
+        }
+        else if (flags & DeclarationFlags.Export) {
             start(`export ${s}`);
         } else if (flags & DeclarationFlags.ExportDefault) {
             start(`export default ${s}`);
@@ -748,19 +823,19 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function needsParens(d: Type) {
-        if (typeof d === "string") {
-            return false;
+        if (typeof d !== "string") {
+            switch (d.kind) {
+                case "generic-type-reference":
+                    return type.is.array(d.type);
+                case "alias":
+                case "interface":
+                case "class":
+                case "union":
+                case "function-type":
+                    return true;
+            }
         }
-        switch (d.kind) {
-            case "array":
-            case "alias":
-            case "interface":
-            case "class":
-            case "union":
-                return true;
-            default:
-                return false;
-        }
+        return false;
     }
 
     function printDeclarationComments(decl: DeclarationBase) {
@@ -773,7 +848,8 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                 start("/**");
                 newline();
                 for (const line of decl.jsDocComment.split(/\r?\n/g)) {
-                    start(` * ${line}`);
+                    start(` *`);
+                    if (line.length) { print(` ${line}`); }
                     newline();
                 }
                 start(" */");
@@ -786,18 +862,22 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         }
     }
 
-    function printInterfaceMembers(members: InterfaceMember[]) {
+    function printObjectTypeMembers(members: ObjectTypeMember[]) {
         print("{");
-        newline();
-        indentLevel++;
-        for (const member of members) {
-            printMember(member);
+        if (members.length) {
+            newline();
+            indentLevel++;
+            for (const member of members) {
+                printMember(member);
+            }
+            indentLevel--;
+            tab();
+        } else {
+            print("");
         }
-        indentLevel--;
-        tab();
         print("}");
 
-        function printMember(member: InterfaceMember) {
+        function printMember(member: ObjectTypeMember) {
             switch (member.kind) {
                 case "index-signature":
                     printDeclarationComments(member);
@@ -819,6 +899,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                         if (!first) print(", ");
                         first = false;
                         print(param.name);
+                        if (param.optional) print("?");
                         print(": ");
                         writeReference(param.type);
                     }
@@ -832,14 +913,6 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     writeMethodDeclaration(member);
                     return;
                 case "property":
-                    if (config.preferMethodSignature &&
-                        type.is.functionType(member.type)) {
-                        const m = create.method(member.name, member.type.parameters, member.type.returnType, member.flags);
-                        m.comment = member.comment;
-                        m.jsDocComment = member.jsDocComment;
-                        writeMethodDeclaration(m);
-                        return;
-                    }
                     printDeclarationComments(member);
                     tab();
                     if (hasFlag(member.flags, DeclarationFlags.ReadOnly)) print("readonly ");
@@ -851,11 +924,11 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     newline();
                     return;
             }
-            never(member, `Unknown member kind ${(member as InterfaceMember).kind}`);
+            never(member, `Unknown member kind ${(member as ObjectTypeMember).kind}`);
         }
     }
 
-    function writeReference(d: Type) {
+    function writeReference(d: ReturnType) {
         if (typeof d === "string") {
             print(d);
         } else {
@@ -882,15 +955,26 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     print(names.join("."));
                     break;
 
-                case "array":
-                    if (needsParens(e.type)) print("(");
-                    writeReference(e.type);
-                    if (needsParens(e.type)) print(")");
-                    print("[]");
+                case "generic-type-reference":
+                    const typeArgument = e.typeArguments[0] || type.any;
+                    if (type.is.array(e.type) && !type.is.union(typeArgument) && !type.is.functionType(typeArgument)) {
+                        if (needsParens(typeArgument)) print("(");
+                        writeReference(typeArgument);
+                        if (needsParens(typeArgument)) print(")");
+                        print("[]");
+                    } else {
+                        const g = e.type as Type;
+                        writeReference(g);
+                        if (e.typeArguments.length > 0) {
+                            print("<");
+                            writeDelimited(e.typeArguments, ", ", writeReference);
+                            print(">");
+                        }
+                    }
                     break;
 
                 case "object":
-                    printInterfaceMembers(e.members);
+                    printObjectTypeMembers(e.members);
                     break;
 
                 case "string-literal":
@@ -908,11 +992,29 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     break;
 
                 case "union":
-                    writeDelimited(e.members, " | ", writeReference);
+                    writeDelimited(e.members, " | ", x => {
+                        if (type.is.functionType(x)) { print("("); }
+                        writeReference(x);
+                        if (type.is.functionType(x)) { print(")"); }
+                    });
+                    break;
+
+                case "intersection":
+                    writeDelimited(e.members, " & ", x => {
+                        if (type.is.functionType(x)) { print("("); }
+                        writeReference(x);
+                        if (type.is.functionType(x)) { print(")"); }
+                    });
                     break;
 
                 case "typeof":
                     print("typeof ");
+                    writeReference(e.type);
+                    break;
+
+                case "type-predicate":
+                    print(e.parameter.name);
+                    print(" is ");
                     writeReference(e.type);
                     break;
 
@@ -944,6 +1046,11 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     writeReference(p.baseType);
             }
 
+            if (p.default) {
+                print(" = ");
+                writeReference(p.default);
+            }
+
             first = false;
         }
 
@@ -952,7 +1059,9 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
 
     function writeInterface(d: InterfaceDeclaration) {
         printDeclarationComments(d);
-        startWithDeclareOrExport(`interface ${d.name} `, d.flags);
+        startWithDeclareOrExport(`interface ${d.name}`, d.flags);
+        writeTypeParameters(d.typeParameters);
+        print(" ");
         if (d.baseTypes && d.baseTypes.length) {
             print(`extends `);
             let first = true;
@@ -961,8 +1070,10 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                 writeReference(baseType);
                 first = false;
             }
+            print(" ");
         }
-        printInterfaceMembers(d.members);
+        if (d.members.length) { printObjectTypeMembers(d.members); }
+        else { print("{ }"); }
         newline();
     }
 
@@ -997,8 +1108,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
     }
 
     function writeParameter(p: Parameter) {
-        const flags = p.flags || DeclarationFlags.None;
-        print(`${flags & ParameterFlags.Rest ? "..." : ""}${p.name}${flags & ParameterFlags.Optional ? "?" : ""}: `);
+        print(`${p.rest ? "..." : ""}${p.name}${p.optional ? "?" : ""}: `);
         writeReference(p.type);
     }
 
@@ -1035,7 +1145,6 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         indentLevel++;
         for (const m of c.members) {
             writeClassMember(m);
-            newline();
         }
         indentLevel--;
         start("}");
@@ -1079,7 +1188,7 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         const oldLength = output.length;
         const startFrom = getLastLineLength();
         writeDelimited(m.parameters, ", ", writeParameter);
-        if (getLastLineLength() > config.chop.methods) {
+        if ((getLastLineLength() - startFrom) > config.chop.methods) {
             output = output.slice(0, oldLength);
             const sep = `,${config.outputEol}${Array(startFrom).join(" ")}`;
             writeDelimited(m.parameters, sep, writeParameter);
@@ -1090,17 +1199,44 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
         newline();
     }
 
+    function writeNamespaceMembers(members: NamespaceMember[]) {
+        indentLevel++;
+        let lastKind = "";
+        for (let i = 0; i < members.length; i++) {
+            const member = members[i];
+            switch (member.kind) {
+                case "class":
+                case "interface":
+                case "namespace":
+                    if (i !== 0) { newline(); }
+                    break;
+                default:
+                    if (i !== 0 && lastKind !== member.kind) { newline(); }
+                    break;
+            }
+            lastKind = member.kind;
+            writeDeclaration(member);
+        }
+        indentLevel--;
+    }
+
     function writeNamespace(ns: NamespaceDeclaration) {
         printDeclarationComments(ns);
         startWithDeclareOrExport(`namespace ${ns.name} {`, ns.flags);
         contextStack.push(ContextFlags.InAmbientNamespace);
         newline();
-        indentLevel++;
-        for (const member of ns.members) {
-            writeDeclaration(member);
-            newline();
-        }
-        indentLevel--;
+        writeNamespaceMembers(ns.members);
+        start(`}`);
+        contextStack.pop();
+        newline();
+    }
+
+    function writeGlobal(global: GlobalDeclaration) {
+        printDeclarationComments(global);
+        startWithDeclareOrExport(`global {`);
+        contextStack.push(ContextFlags.InAmbientNamespace);
+        newline();
+        writeNamespaceMembers(global.members);
         start(`}`);
         contextStack.pop();
         newline();
@@ -1197,6 +1333,8 @@ export function emit(rootDecl: TopLevelDeclaration, rootFlags = ContextFlags.Non
                     return writeClass(d);
                 case "namespace":
                     return writeNamespace(d);
+                case "global":
+                    return writeGlobal(d);
                 case "const":
                     return writeConst(d);
                 case "alias":
